@@ -29,6 +29,7 @@ public class StringGroup extends GhidraScript {
         
     private Listing listing;
     private HashMap<Address, Data> stringMap;
+    private HashMap<Address, Data> functionReferenceMap;
     private File logFile;
     private PrintWriter logWriter;
     private IsolatedEntrySubModel subModel;
@@ -43,7 +44,30 @@ public class StringGroup extends GhidraScript {
         return;
     }
     
-    private void checkFunc(Function f) throws Exception {
+    private void checkNonFunctionInstructions() throws Exception {
+        // only call this when functionReferenceMap has been fully populated
+        InstructionIterator instructionsIter = listing.getInstructions(currentProgram.getMemory(), true);
+        while (instructionsIter.hasNext() && !monitor.isCancelled()) {
+            Instruction instruction = instructionsIter.next();
+            // skip instructions that are part of our established function references
+            if (functionReferenceMap.containsKey(instruction.getAddress())) {
+                continue;
+            }
+            Reference[] references = instruction.getReferencesFrom();
+            for (Reference ref : references) {
+                Address iAddress = instruction.getAddress();
+                Address rAddress = ref.getToAddress(); 
+                if (stringMap.containsKey(rAddress)) {
+                    Data sData = stringMap.get(rAddress);
+                    String sValue = sData.getDefaultValueRepresentation();
+                    logLine("!!! Non-Function String Ref @" + iAddress + ": " + sValue);
+                    tableDialog.add(new FuncStringRef(null, iAddress, sValue, sData.getAddress()));
+                }
+            }
+        }
+    }
+    
+    private void checkFunction(Function f) throws Exception {
         boolean functionRefsStrings = false;
         CodeBlockIterator subIter = subModel.getCodeBlocksContaining(f.getBody(), monitor);
         while (subIter.hasNext()) {
@@ -67,6 +91,7 @@ public class StringGroup extends GhidraScript {
                             emptyTable = false;
                         }
                         Data stringData = stringMap.get(ref.getToAddress());
+                        functionReferenceMap.put(blockAddress, stringData);
                         String stringValue = stringData.getDefaultValueRepresentation();
                         logLine(blockAddress + ": " + stringValue);
                         tableDialog.add(new FuncStringRef(f, blockAddress, stringValue, stringData.getAddress()));
@@ -84,7 +109,6 @@ public class StringGroup extends GhidraScript {
         if (logFile.exists()) {
             if (!askYesNo("File Exists", "Overwrite Existing File?")) {
                 println("Aborting!");
-                logWriter = null;
                 return false;
             }
         }
@@ -93,14 +117,12 @@ public class StringGroup extends GhidraScript {
         }
         catch (FileNotFoundException e) {
             println("File not found!");
-            logWriter = null;
             return false;
         }
         return true;
     }
     
     public void getStringAddresses() throws Exception {
-        // step 1: get all known string addresses
         DataIterator dataIter = listing.getDefinedData(true);
         while (dataIter.hasNext() && !monitor.isCancelled()) {
             Data data = dataIter.next();
@@ -122,6 +144,7 @@ public class StringGroup extends GhidraScript {
         listing = currentProgram.getListing();
         subModel = new IsolatedEntrySubModel(currentProgram);
         stringMap = new HashMap<>();
+        functionReferenceMap = new HashMap<>();
                         
         // create a table to toss results into
         tableDialog = createTableChooserDialog(currentProgram.getName() + ": grouped string references", null);
@@ -130,15 +153,29 @@ public class StringGroup extends GhidraScript {
 
         // handle single function if current address is a function ... give option to handle all functions if not
         if (currentAddress != null && listing.getFunctionContaining(currentAddress) != null) {
-                getStringAddresses();
-                checkFunc(listing.getFunctionContaining(currentAddress));
-        } else if (askYesNo("No Current Function", "Process All Functions?")) {
-               openLog();
-               getStringAddresses();
-               FunctionIterator functionIter = listing.getFunctions(true);
-               while (functionIter.hasNext() && !monitor.isCancelled()) {
-                   checkFunc(functionIter.next());    
-               }       
+            getStringAddresses();
+            checkFunction(listing.getFunctionContaining(currentAddress));
+           
+        }
+        // do a full analysis run
+        else if (askYesNo("No Current Function", "Process all Functions?")) {
+            
+            if (askYesNo("Log Results", "Log results to disk?")) {
+                openLog();
+            } else {
+                logWriter = null;
+            }
+            
+            getStringAddresses();
+            FunctionIterator functionIter = listing.getFunctions(true);
+            while (functionIter.hasNext() && !monitor.isCancelled()) {
+                checkFunction(functionIter.next());    
+            }    
+            
+            if (askYesNo("Check Non-Function Instructions", "Check for Non-Function String References?")) {
+                checkNonFunctionInstructions();
+            }
+            
         } else return;
         		
         if (logWriter != null) {
@@ -187,8 +224,15 @@ public class StringGroup extends GhidraScript {
 
         @Override
         public String toString() {
+            String fName;
+            
+            if (func == null) {
+                fName = "NO FUNCTION DEFINED";
+            } else {
+                fName = func.getName();
+            }
             StringBuffer sb = new StringBuffer();
-            sb.append(func.getName());
+            sb.append(fName);
             sb.append(" " + stringReference + " reference to: ");
             sb.append(stringValue);
             return sb.toString();
@@ -196,6 +240,10 @@ public class StringGroup extends GhidraScript {
 
         @Override
         public Address getAddress() {
+            if (func == null ) {
+                // return the string reference instead
+                return stringReference;
+            }
             return func.getEntryPoint();
         }
     }
@@ -242,6 +290,10 @@ public class StringGroup extends GhidraScript {
 
                 @Override
                 public String getColumnValue(AddressableRowObject rowObject) {
+                    Function f = ((FuncStringRef) rowObject).getFunction();
+                    if (f == null) {
+                        return "NO FUNCTION DEFINED";
+                    }
                     return ((FuncStringRef) rowObject).getFunction().getName();
                 }
             };
