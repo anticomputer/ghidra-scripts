@@ -33,6 +33,7 @@ public class StringGroup extends GhidraScript {
     private PrintWriter logWriter;
     private IsolatedEntrySubModel subModel;
     private TableChooserDialog tableDialog;
+    private boolean emptyTable;
         
     private void logLine(String line) {
         if (logWriter != null) {
@@ -63,6 +64,7 @@ public class StringGroup extends GhidraScript {
                         if (functionRefsStrings == false) {
                             logLine("### " + f.getName());
                             functionRefsStrings = true;
+                            emptyTable = false;
                         }
                         Data stringData = stringMap.get(ref.getToAddress());
                         String stringValue = stringData.getDefaultValueRepresentation();
@@ -116,14 +118,16 @@ public class StringGroup extends GhidraScript {
             return;
         }
         
+        // things we need for our analysis
         listing = currentProgram.getListing();
+        subModel = new IsolatedEntrySubModel(currentProgram);
         stringMap = new HashMap<>();
                         
         // create a table to toss results into
         tableDialog = createTableChooserDialog(currentProgram.getName() + ": grouped string references", null);
         configureTableColumns(tableDialog);
-        
-        subModel = new IsolatedEntrySubModel(currentProgram);
+        emptyTable = true;
+
         // handle just current function if an address is selected
         if (currentAddress != null) {
             Function f = listing.getFunctionContaining(currentAddress);
@@ -149,7 +153,10 @@ public class StringGroup extends GhidraScript {
             println("Results written to: " + logFile.getAbsolutePath());
         }
         
-        tableDialog.show();
+        // don't be annoying and only pop up a table when we have results to show
+        if (emptyTable == false) {
+            tableDialog.show();
+        }
    		
         return;
     }
