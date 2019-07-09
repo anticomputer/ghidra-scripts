@@ -1,10 +1,11 @@
 //Group string references by function
 //@author Bas Alberts
 //@category Analysis 
-//@keybinding 
+//@keybinding alt-0
 //@menupath 
 //@toolbar 
 
+// Note: to enable this in your codebrowser via the Alt-0 shortcut (SARK style) make sure the script is selected in your script manager
 // Disclaimer: this was mostly copy pasted together from existing Ghidra scripts and I claim no copyright to this horrid pile of Java :)
 
 import ghidra.app.script.GhidraScript;
@@ -28,9 +29,10 @@ public class StringGroup extends GhidraScript {
         
     private Listing listing;
     private HashMap<Address, Data> stringMap;
-    private HashMap<Address, Data> instructionMap;
     private File logFile;
     private PrintWriter logWriter;
+    private IsolatedEntrySubModel subModel;
+    private TableChooserDialog tableDialog;
         
     private void logLine(String line) {
         if (logWriter != null) {
@@ -39,18 +41,49 @@ public class StringGroup extends GhidraScript {
         println(line);
         return;
     }
-
-    public void run() throws Exception {
-        listing = currentProgram.getListing();
-        stringMap = new HashMap<>();
-        instructionMap = new HashMap<>();
-        
-        // get a log file to log results to
+    
+    private void checkFunc(Function f) throws Exception {
+        boolean functionRefsStrings = false;
+        CodeBlockIterator subIter = subModel.getCodeBlocksContaining(f.getBody(), monitor);
+        while (subIter.hasNext()) {
+            // get a single code block
+            CodeBlock block = subIter.next();
+            // walk the addresses for the code block
+            AddressIterator blockAddresses = block.getAddresses(true);
+            while (blockAddresses.hasNext()) {
+                Address blockAddress = blockAddresses.next();
+                // check if the instruction has a reference to any known string
+                Instruction instruction = listing.getInstructionAt(blockAddress);
+                if (instruction == null) {
+                    continue;
+                }
+                Reference[] references = instruction.getReferencesFrom();
+                for (Reference ref : references) {
+                    if (stringMap.containsKey(ref.getToAddress())) {
+                        if (functionRefsStrings == false) {
+                            logLine("### " + f.getName());
+                            functionRefsStrings = true;
+                        }
+                        Data stringData = stringMap.get(ref.getToAddress());
+                        String stringValue = stringData.getDefaultValueRepresentation();
+                        logLine(blockAddress + ": " + stringValue);
+                        tableDialog.add(new FuncStringRef(f, blockAddress, stringValue, stringData.getAddress()));
+                    }
+                }
+            }
+        }
+        if (functionRefsStrings == true) {
+            logLine("");
+        }
+    }
+    
+    private boolean openLog() throws Exception {
         logFile = askFile("Choose File Location", "Save");
         if (logFile.exists()) {
             if (!askYesNo("File Exists", "Overwrite Existing File?")) {
                 println("Aborting!");
-                return;
+                logWriter = null;
+                return false;
             }
         }
         try {
@@ -58,81 +91,70 @@ public class StringGroup extends GhidraScript {
         }
         catch (FileNotFoundException e) {
             println("File not found!");
-            return;
+            logWriter = null;
+            return false;
         }
-                
-        // create a table to toss results into
-        TableChooserDialog tableDialog = createTableChooserDialog(currentProgram.getName() + ": grouped string references", null);
-        configureTableColumns(tableDialog);
-        
+        return true;
+    }
+    
+    public void getStringAddresses() throws Exception {
         // step 1: get all known string addresses
         DataIterator dataIter = listing.getDefinedData(true);
         while (dataIter.hasNext() && !monitor.isCancelled()) {
-            // we could do a data.getReferenceIteratorTo() type logic but that becomes less convenient to expand on
             Data data = dataIter.next();
             String type = data.getDataType().getName().toLowerCase();
             if ((type.contains("unicode") || type.contains("string"))) {
                 stringMap.put(data.getAddress(), data);
             }
+        }        
+    }  
+    
+    public void run() throws Exception {
+        
+        if (currentProgram == null) {
+            println("No current program!");
+            return;
         }
         
-        // step 2 get addresses of all instructions containing reference to any of those string addresses
-        InstructionIterator instructionsIter = listing.getInstructions(currentProgram.getMemory(), true);
-        while (instructionsIter.hasNext() && !monitor.isCancelled()) {
-            Instruction instruction = instructionsIter.next();
-            Reference[] references = instruction.getReferencesFrom();
-            for (Reference ref : references) {
-                if (stringMap.containsKey(ref.getToAddress())) {
-                    instructionMap.put(instruction.getAddress(), stringMap.get(ref.getToAddress()));
-                }
-            }
-        }
-
-        // step 3: check if those addresses are in the body address range of any function
-        FunctionIterator iter = listing.getFunctions(true);
-        IsolatedEntrySubModel submodel = new IsolatedEntrySubModel(currentProgram);
-        // check all the codeblocks of a function for string references
-        while (iter.hasNext() && !monitor.isCancelled()) {
-            Function f = iter.next();
-            boolean functionRefsStrings = false;
-            CodeBlockIterator subIter = submodel.getCodeBlocksContaining(f.getBody(), monitor);
-            while (subIter.hasNext()) {
-                // get a single code block
-                CodeBlock block = subIter.next();
-                // walk the instructions for the code block ... low to high
-                AddressIterator blockAddresses = block.getAddresses(true);
-                while (blockAddresses.hasNext()) {
-                    Address blockAddress = blockAddresses.next();
-                    if (instructionMap.containsKey(blockAddress)) {
-                        if (functionRefsStrings == false) {
-                            logLine("### " + f.getName());
-                            functionRefsStrings = true;
-                        }
-                        Data stringData = instructionMap.get(blockAddress);
-                        String stringValue = stringData.getDefaultValueRepresentation();
-                        // log results
-                        logLine(blockAddress + ": " + stringValue);
-                        // table results
-                        tableDialog.add(new FuncStringRef(f, blockAddress, stringValue, stringData.getAddress()));
-                    }
-                }
-            }
-            if (functionRefsStrings == true) {
-                logLine("");
-            }
-        }
-		
-        logWriter.close();
-        println("Results written to: " + logFile.getAbsolutePath());
+        listing = currentProgram.getListing();
+        stringMap = new HashMap<>();
+                        
+        // create a table to toss results into
+        tableDialog = createTableChooserDialog(currentProgram.getName() + ": grouped string references", null);
+        configureTableColumns(tableDialog);
         
-        // show the result table
+        subModel = new IsolatedEntrySubModel(currentProgram);
+        // handle just current function if an address is selected
+        if (currentAddress != null) {
+            Function f = listing.getFunctionContaining(currentAddress);
+            if (f == null) {
+                println("No function found at current address!");
+                return;
+            }
+            getStringAddresses();
+            checkFunc(f);
+        }
+        // handle all functions
+        else {
+            openLog();
+            getStringAddresses();
+            FunctionIterator functionIter = listing.getFunctions(true);
+            while (functionIter.hasNext() && !monitor.isCancelled()) {
+                checkFunc(functionIter.next());
+            }
+        }
+        		
+        if (logWriter != null) {
+            logWriter.close();
+            println("Results written to: " + logFile.getAbsolutePath());
+        }
+        
         tableDialog.show();
    		
         return;
     }
     
     // Note: most all of the below was gacked from CompareFunctionSizesScript.java
-    
     static class FuncStringRef implements AddressableRowObject {
 		
         private Address stringAddress;
