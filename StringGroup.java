@@ -128,25 +128,18 @@ public class StringGroup extends GhidraScript {
         configureTableColumns(tableDialog);
         emptyTable = true;
 
-        // handle just current function if an address is selected
-        if (currentAddress != null) {
-            Function f = listing.getFunctionContaining(currentAddress);
-            if (f == null) {
-                println("No function found at current address!");
-                return;
-            }
-            getStringAddresses();
-            checkFunc(f);
-        }
-        // handle all functions
-        else {
-            openLog();
-            getStringAddresses();
-            FunctionIterator functionIter = listing.getFunctions(true);
-            while (functionIter.hasNext() && !monitor.isCancelled()) {
-                checkFunc(functionIter.next());
-            }
-        }
+        // handle single function if current address is a function ... give option to handle all functions if not
+        if (currentAddress != null && listing.getFunctionContaining(currentAddress) != null) {
+                getStringAddresses();
+                checkFunc(listing.getFunctionContaining(currentAddress));
+        } else if (askYesNo("No Current Function", "Process All Functions?")) {
+               openLog();
+               getStringAddresses();
+               FunctionIterator functionIter = listing.getFunctions(true);
+               while (functionIter.hasNext() && !monitor.isCancelled()) {
+                   checkFunc(functionIter.next());    
+               }       
+        } else return;
         		
         if (logWriter != null) {
             logWriter.close();
