@@ -91,34 +91,62 @@ public class StringGroup extends GhidraScript {
         return true;
     }
     
+    private void putFunctionReference(Function f, Instruction i, Data d) throws Exception {
+        Map.Entry<Instruction, Data> xref = new AbstractMap.SimpleEntry<>(i, d);
+        if (functionReference.containsKey(f)) {
+            functionReference.get(f).add(xref);
+        } else {
+            ArrayList<Map.Entry<Instruction, Data>> xrefList = new ArrayList<>();
+            xrefList.add(xref);
+            functionReference.put(f, xrefList);
+        }
+        return;
+    }
+    
     public void getStringReferences() throws Exception {
         DataIterator dataIter = listing.getDefinedData(true);
         while (dataIter.hasNext() && !monitor.isCancelled()) {
             Data data = dataIter.next();
             String type = data.getDataType().getName().toLowerCase();
-            // XXX: see if there is a better API for determining string data types
-            if ((type.contains("unicode") || type.contains("string"))) {
-                ReferenceIterator refIter = data.getReferenceIteratorTo();
-                while (refIter.hasNext() && !monitor.isCancelled()) {
-                    Address fromAddress = refIter.next().getFromAddress();
-                    Function f = listing.getFunctionContaining(fromAddress);
-                    Instruction i = listing.getInstructionAt(fromAddress);
-                    // matched reference to an instruction belonging to a function
-                    if (f != null && i != null) {
-                        Map.Entry<Instruction, Data> xref = new AbstractMap.SimpleEntry<>(i, data);
-                        if (functionReference.containsKey(f)) {
-                            functionReference.get(f).add(xref);
-                        } else {
-                            ArrayList<Map.Entry<Instruction, Data>> xrefList = new ArrayList<>();
-                            xrefList.add(xref);
-                            functionReference.put(f, xrefList);
-                        }
+            if (!(type.contains("unicode") || type.contains("string"))) {
+                continue;
+            }
+            ReferenceIterator dataRefIter = data.getReferenceIteratorTo();
+            while (dataRefIter.hasNext() && !monitor.isCancelled()) {
+                Address fromAddress = dataRefIter.next().getFromAddress();
+                Function f = listing.getFunctionContaining(fromAddress);
+                Instruction i = listing.getInstructionAt(fromAddress);
+                // matched reference to an instruction belonging to a function
+                if (f != null && i != null) {
+                    putFunctionReference(f, i, data);
+                }
+                // matched reference to an instruction not belonging to a function
+                else if (i != null) {
+                    nonFunctionReference.put(i, data);
+                }
+                // see if this is a pointer to a string and if that pointer is referenced
+                else {
+                    Data pData = listing.getDefinedDataAt(fromAddress);
+                    if (pData == null || !pData.isPointer()) {
+                        continue;
                     }
-                    // matched reference to an instruction not belonging to a function
-                    else if (i != null) {
-                        nonFunctionReference.put(i, data);
-                    } else {
-                        logLine("###: no function or instruction for string reference @" + fromAddress);
+                    ReferenceIterator pDataRefIter = pData.getReferenceIteratorTo();
+                    while (pDataRefIter.hasNext() && !monitor.isCancelled()) {
+                        fromAddress = pDataRefIter.next().getFromAddress();
+                        i = listing.getInstructionAt(fromAddress);
+                        f = listing.getFunctionContaining(fromAddress);
+                        // matched indirect reference to an instruction belonging to a function
+                        if (f != null && i != null) {
+                            logLine("### indirect reference via: " + pData.getAddress()
+                            + " function: " + f.getName()
+                            + " instruction: " + i.getAddress()
+                            + " string: " + data.getDefaultValueRepresentation());
+                            putFunctionReference(f, i, data);
+                        }
+                        // matched indirect reference to an instruction not belonging to a function
+                        else if (i != null) {
+                            nonFunctionReference.put(i, data);
+                        }
                     }
                 }
             }
