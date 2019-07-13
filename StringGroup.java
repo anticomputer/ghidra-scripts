@@ -51,7 +51,6 @@ public class StringGroup extends GhidraScript {
             Address xrefAddress = xref.getKey().getAddress();
             Address stringAddress = xref.getValue().getAddress();
             String stringValue = xref.getValue().getDefaultValueRepresentation();
-            logLine(xrefAddress + ": " + stringValue);
             logLine("### non-function reference @" + xrefAddress + ": " + stringValue);
             tableDialog.add(new FuncStringRef(null, xrefAddress, stringValue, stringAddress));
             emptyTable = false;
