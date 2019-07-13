@@ -137,10 +137,12 @@ public class StringGroup extends GhidraScript {
                         f = listing.getFunctionContaining(fromAddress);
                         // matched indirect reference to an instruction belonging to a function
                         if (f != null && i != null) {
+                            /*
                             logLine("### indirect reference via: " + pData.getAddress()
                             + " function: " + f.getName()
                             + " instruction: " + i.getAddress()
                             + " string: " + data.getDefaultValueRepresentation());
+                            */
                             putFunctionReference(f, i, data);
                         }
                         // matched indirect reference to an instruction not belonging to a function
