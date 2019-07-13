@@ -48,9 +48,9 @@ public class StringGroup extends GhidraScript {
     
     private void checkNonFunctionReferences() throws Exception {
         for (Map.Entry<Instruction, Data> xref : nonFunctionReference.entrySet()) {
-			Address xrefAddress = xref.getKey().getAddress();
-			Address stringAddress = xref.getValue().getAddress();
-			String stringValue = xref.getValue().getDefaultValueRepresentation();
+            Address xrefAddress = xref.getKey().getAddress();
+            Address stringAddress = xref.getValue().getAddress();
+            String stringValue = xref.getValue().getDefaultValueRepresentation();
             logLine(xrefAddress + ": " + stringValue);
             logLine("### non-function reference @" + xrefAddress + ": " + stringValue);
             tableDialog.add(new FuncStringRef(null, xrefAddress, stringValue, stringAddress));
@@ -59,19 +59,19 @@ public class StringGroup extends GhidraScript {
     }
     
     private void checkFunction(Function f) throws Exception {
-    	if (functionReference.containsKey(f)) {
-    		logLine("### " + f.getName());
-    		ArrayList<Map.Entry<Instruction, Data>> xrefs = functionReference.get(f);
-    		for (Map.Entry<Instruction, Data> xref : xrefs) {
-    			Address xrefAddress = xref.getKey().getAddress();
-    			Address stringAddress = xref.getValue().getAddress();
-    			String stringValue = xref.getValue().getDefaultValueRepresentation();
+        if (functionReference.containsKey(f)) {
+            logLine("### " + f.getName());
+            ArrayList<Map.Entry<Instruction, Data>> xrefs = functionReference.get(f);
+            for (Map.Entry<Instruction, Data> xref : xrefs) {
+                Address xrefAddress = xref.getKey().getAddress();
+                Address stringAddress = xref.getValue().getAddress();
+                String stringValue = xref.getValue().getDefaultValueRepresentation();
                 logLine(xrefAddress + ": " + stringValue);
                 tableDialog.add(new FuncStringRef(f, xrefAddress, stringValue, stringAddress));
                 emptyTable = false;
-    		}
-    		logLine("");
-    	}
+            }
+            logLine("");
+        }
     }
     
     private boolean openLog() throws Exception {
@@ -99,29 +99,29 @@ public class StringGroup extends GhidraScript {
             String type = data.getDataType().getName().toLowerCase();
             // XXX: see if there is a better API for determining string data types
             if ((type.contains("unicode") || type.contains("string"))) {
-            	ReferenceIterator refIter = data.getReferenceIteratorTo();
-            	while (refIter.hasNext() && !monitor.isCancelled()) {
-            		Address fromAddress = refIter.next().getFromAddress();
-            		Function f = listing.getFunctionContaining(fromAddress);
-            		Instruction i = listing.getInstructionAt(fromAddress);
-            		// matched reference to an instruction belonging to a function
-            		if (f != null && i != null) {
-            			Map.Entry<Instruction, Data> xref = new AbstractMap.SimpleEntry<>(i, data);
-            			if (functionReference.containsKey(f)) {
-            				functionReference.get(f).add(xref);
-            			} else {
-            				ArrayList<Map.Entry<Instruction, Data>> xrefList = new ArrayList<>();
-            				xrefList.add(xref);
-            				functionReference.put(f, xrefList);
-            			}
-            		}
-            		// matched reference to an instruction not belonging to a function
-            		else if (i != null) {
-            			nonFunctionReference.put(i, data);
-            		} else {
-            			logLine("###: no function or instruction for string reference @" + fromAddress);
-            		}
-            	}
+                ReferenceIterator refIter = data.getReferenceIteratorTo();
+                while (refIter.hasNext() && !monitor.isCancelled()) {
+                    Address fromAddress = refIter.next().getFromAddress();
+                    Function f = listing.getFunctionContaining(fromAddress);
+                    Instruction i = listing.getInstructionAt(fromAddress);
+                    // matched reference to an instruction belonging to a function
+                    if (f != null && i != null) {
+                        Map.Entry<Instruction, Data> xref = new AbstractMap.SimpleEntry<>(i, data);
+                        if (functionReference.containsKey(f)) {
+                            functionReference.get(f).add(xref);
+                        } else {
+                            ArrayList<Map.Entry<Instruction, Data>> xrefList = new ArrayList<>();
+                            xrefList.add(xref);
+                            functionReference.put(f, xrefList);
+                        }
+                    }
+                    // matched reference to an instruction not belonging to a function
+                    else if (i != null) {
+                        nonFunctionReference.put(i, data);
+                    } else {
+                        logLine("###: no function or instruction for string reference @" + fromAddress);
+                    }
+                }
             }
         }        
     }  
@@ -163,8 +163,8 @@ public class StringGroup extends GhidraScript {
             }   
             checkNonFunctionReferences();
         } else 
-        	return;
-        		
+            return;
+                        
         if (logWriter != null) {
             logWriter.close();
             println("Results written to: " + logFile.getAbsolutePath());
@@ -174,15 +174,15 @@ public class StringGroup extends GhidraScript {
         if (emptyTable == false) {
             tableDialog.show();
         } else {
-        	tableDialog.close();
+            tableDialog.close();
         }
-   		
+                
         return;
     }
     
     // Note: most all of the below was gacked from CompareFunctionSizesScript.java
     static class FuncStringRef implements AddressableRowObject {
-		
+                
         private Address stringAddress;
         private Address stringReference;
         private String stringValue;
@@ -198,7 +198,7 @@ public class StringGroup extends GhidraScript {
         public Address getStringReference() {
             return stringReference;
         }
-		
+                
         public String getStringValue() {
             return stringValue;
         }
@@ -244,7 +244,7 @@ public class StringGroup extends GhidraScript {
     }
 
     class TableEntryList implements RowEntries {
-		
+                
         private TableChooserDialog tDialog;
 
         public TableEntryList(TableChooserDialog dialog) {
@@ -270,7 +270,7 @@ public class StringGroup extends GhidraScript {
     }
 
     private void configureTableColumns(TableChooserDialog dialog) {
-		
+                
         StringColumnDisplay functionNameColumn = new StringColumnDisplay() {
                 @Override
                 public String getColumnName() {
