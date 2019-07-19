@@ -25,7 +25,9 @@ import java.io.PrintWriter;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class StringGroup extends GhidraScript {
         
@@ -52,21 +54,31 @@ public class StringGroup extends GhidraScript {
             Address stringAddress = xref.getValue().getAddress();
             String stringValue = xref.getValue().getDefaultValueRepresentation();
             logLine("### non-function reference @" + xrefAddress + ": " + stringValue);
-            tableDialog.add(new FuncStringRef(null, xrefAddress, stringValue, stringAddress));
+            tableDialog.add(new FuncStringRef(null, xrefAddress, stringValue, stringAddress, null));
             emptyTable = false;
         }
+    }
+    
+    private List<java.lang.String> getCalleeNames(Function f) throws Exception {        
+        List<String> calleeNames = new ArrayList<>();
+        Set<Function> callees = f.getCalledFunctions(monitor);
+        for (Function callee : callees) {
+            calleeNames.add(callee.getName());
+        }    
+        return calleeNames;
     }
     
     private void checkFunction(Function f) throws Exception {
         if (functionReference.containsKey(f)) {
             logLine("### " + f.getName());
+            List<String> calleeNames = getCalleeNames(f);
             ArrayList<Map.Entry<Instruction, Data>> xrefs = functionReference.get(f);
             for (Map.Entry<Instruction, Data> xref : xrefs) {
                 Address xrefAddress = xref.getKey().getAddress();
                 Address stringAddress = xref.getValue().getAddress();
                 String stringValue = xref.getValue().getDefaultValueRepresentation();
                 logLine(xrefAddress + ": " + stringValue);
-                tableDialog.add(new FuncStringRef(f, xrefAddress, stringValue, stringAddress));
+                tableDialog.add(new FuncStringRef(f, xrefAddress, stringValue, stringAddress, String.join(", ", calleeNames)));
                 emptyTable = false;
             }
             logLine("");
@@ -189,7 +201,7 @@ public class StringGroup extends GhidraScript {
             FunctionIterator functionIter = listing.getFunctions(true);
             while (functionIter.hasNext() && !monitor.isCancelled()) {
                 checkFunction(functionIter.next());    
-            }   
+            }
             checkNonFunctionReferences();
         } else 
             return;
@@ -215,13 +227,15 @@ public class StringGroup extends GhidraScript {
         private Address stringAddress;
         private Address stringReference;
         private String stringValue;
+        private String calleeNames;
         private Function func;
 
-        public FuncStringRef(Function f, Address xref, String s, Address a) {
+        public FuncStringRef(Function f, Address xref, String s, Address a, String callees) {
             func = f;
             stringReference = xref;
             stringAddress = a;
             stringValue = s;
+            calleeNames = callees;
         }
 
         public Address getStringReference() {
@@ -230,6 +244,13 @@ public class StringGroup extends GhidraScript {
                 
         public String getStringValue() {
             return stringValue;
+        }
+        
+        public String getCalleeNames() {
+            if (calleeNames == null) {
+                return "no callees";
+            }
+            return calleeNames;
         }
         
         public Address getStringAddress() {
@@ -354,10 +375,24 @@ public class StringGroup extends GhidraScript {
                     return "String Address";
                 }
             };
+            
+        ColumnDisplay<String> calleeNamesColumn = new AbstractComparableColumnDisplay<String>() {
+
+                @Override
+                public String getColumnValue(AddressableRowObject rowObject) {
+                    return ((FuncStringRef) rowObject).getCalleeNames();
+                }
+
+                @Override
+                public String getColumnName() {
+                    return "Callees";
+                }
+            };           
 
         dialog.addCustomColumn(functionNameColumn);
         dialog.addCustomColumn(stringReferenceColumn);
         dialog.addCustomColumn(stringValueColumn);
         dialog.addCustomColumn(stringAddressColumn);
+        dialog.addCustomColumn(calleeNamesColumn);
     }
 }
